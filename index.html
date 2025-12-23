@@ -333,12 +333,44 @@
       // Determine whether the API expects a per-type path (e.g. /penalties/:type)
       const hasFilterControls = filtersEl.querySelectorAll('input[type=checkbox]').length > 0;
 
-      // Helper to normalize response into an array of items
+      // Helper to find an array of items that contain geolocation fields anywhere in a nested response
+      function findGeoArray(obj, depth = 0) {
+        if (!obj || depth > 6) return null;
+        if (Array.isArray(obj)) {
+          if (obj.length > 0 && obj.some(it => getLatLng(it))) return obj;
+          for (const el of obj) {
+            const found = findGeoArray(el, depth + 1);
+            if (found) return found;
+          }
+          return null;
+        }
+        if (typeof obj === 'object') {
+          for (const k of Object.keys(obj)) {
+            const found = findGeoArray(obj[k], depth + 1);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+
+      // Helper to normalize response into an array of items (robust against nested shapes)
       const normalize = data => {
+        if (!data) return [];
         if (Array.isArray(data)) return data;
         if (data && Array.isArray(data.data)) return data.data;
-        if (data && typeof data === 'object') return Object.values(data);
-        return [];
+        if (data && Array.isArray(data.items)) return data.items;
+        if (data && Array.isArray(data.results)) return data.results;
+        // try common single-level object -> values
+        if (data && typeof data === 'object') {
+          const vals = Object.values(data);
+          // if values are array and contain geo items, pick first
+          for (const v of vals) {
+            if (Array.isArray(v) && v.some(it => getLatLng(it))) return v;
+          }
+        }
+        // deep search for any nested array with geo items
+        const found = findGeoArray(data);
+        return found || [];
       };
 
       try {
