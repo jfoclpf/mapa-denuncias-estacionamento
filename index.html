@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>v5 Mapa — Denúncias de Estacionamento</title>
+  <title>v6 Mapa — Denúncias de Estacionamento</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -215,6 +215,19 @@
         }
         if ('latitude' in obj && 'longitude' in obj) {
           const a = toNumber(obj.latitude), b = toNumber(obj.longitude);
+          if (a !== null && b !== null) return [a,b];
+        }
+
+        // Heuristic: detect keys that include 'lat' and keys that include 'lon'|'long'|'lng'
+        let latKey = null, lonKey = null;
+        for (const k of Object.keys(obj)) {
+          const kl = k.toLowerCase();
+          if (!latKey && kl.includes('lat')) latKey = k;
+          if (!lonKey && (kl.includes('lon') || kl.includes('long') || kl.includes('lng'))) lonKey = k;
+        }
+        if (latKey && lonKey) {
+          const a = toNumber(obj[latKey]);
+          const b = toNumber(obj[lonKey]);
           if (a !== null && b !== null) return [a,b];
         }
 
