@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>v4 Mapa — Denúncias de Estacionamento</title>
+  <title>v5 Mapa — Denúncias de Estacionamento</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -161,32 +161,113 @@
     const loadedCountEl = document.getElementById('loadedCount');
     const limitEl = document.getElementById('limit');
 
-    // Utility: robustly get lat/lng from a payload item
+    // Utility: robustly get lat/lng from a payload item (recursive search)
     function getLatLng(item) {
-      // common patterns
-      // 1) item.lat & item.lon or latitude & longitude
-      if (item.lat && item.lon) return [Number(item.lat), Number(item.lon)];
-      if (item.latitude && item.longitude) return [Number(item.latitude), Number(item.longitude)];
-      if (item.lat && item.lng) return [Number(item.lat), Number(item.lng)];
-      if (item.location && item.location.latitude && item.location.longitude) {
-        return [Number(item.location.latitude), Number(item.location.longitude)];
+      if (!item) return null;
+
+      const isFiniteNumber = v => typeof v === 'number' && isFinite(v);
+      const toNumber = v => {
+        if (isFiniteNumber(v)) return v;
+        if (typeof v === 'string' && v.trim() !== '') {
+          const n = Number(v.replace(',', '.'));
+          return isFiniteNumber(n) ? n : null;
+        }
+        return null;
+      };
+
+      const isLat = v => v >= -90 && v <= 90;
+      const isLng = v => v >= -180 && v <= 180;
+
+      function pairFromArray(arr) {
+        if (!Array.isArray(arr) || arr.length < 2) return null;
+        const a = toNumber(arr[0]);
+        const b = toNumber(arr[1]);
+        if (a === null || b === null) return null;
+        // Try [lat, lng]
+        if (isLat(a) && isLng(b)) return [a, b];
+        // Try [lng, lat]
+        if (isLat(b) && isLng(a)) return [b, a];
+        return null;
       }
-      // geometry.geojson / geometry coordinates: GeoJSON [lng, lat]
-      if (item.geometry && item.geometry.coordinates && Array.isArray(item.geometry.coordinates)) {
-        const c = item.geometry.coordinates;
-        // ensure numbers
-        return [Number(c[1]), Number(c[0])];
+
+      function pairFromObject(obj) {
+        if (!obj || typeof obj !== 'object') return null;
+        const keys = Object.keys(obj).map(k => k.toLowerCase());
+        const get = k => toNumber(obj[k]);
+
+        // common pairs
+        const mapping = [
+          ['lat','lon'], ['lat','lng'], ['latitude','longitude'], ['latitude','lng'], ['lat','longitude']
+        ];
+        for (const [aKey,bKey] of mapping) {
+          if (aKey in obj && bKey in obj) {
+            const a = toNumber(obj[aKey]);
+            const b = toNumber(obj[bKey]);
+            if (a !== null && b !== null && isLat(a) && isLng(b)) return [a,b];
+            if (a !== null && b !== null && isLat(b) && isLng(a)) return [b,a];
+          }
+        }
+
+        // coordinates as object {lat, lng} or {latitude, longitude}
+        if ('lat' in obj && 'lng' in obj) {
+          const a = toNumber(obj.lat), b = toNumber(obj.lng);
+          if (a !== null && b !== null) return [a,b];
+        }
+        if ('latitude' in obj && 'longitude' in obj) {
+          const a = toNumber(obj.latitude), b = toNumber(obj.longitude);
+          if (a !== null && b !== null) return [a,b];
+        }
+
+        return null;
       }
-      if (item.geojson && item.geojson.coordinates) {
-        const c = item.geojson.coordinates;
-        return [Number(c[1]), Number(c[0])];
+
+      // deep search for arrays/objects that look like coordinates
+      function find(obj, depth = 0) {
+        if (!obj || depth > 8) return null;
+        // Arrays
+        if (Array.isArray(obj)) {
+          const p = pairFromArray(obj);
+          if (p) return p;
+          for (const el of obj) {
+            const r = find(el, depth+1);
+            if (r) return r;
+          }
+          return null;
+        }
+        // Objects
+        if (typeof obj === 'object') {
+          // GeoJSON geometry coordinates [lng, lat]
+          if (obj.geometry && Array.isArray(obj.geometry.coordinates)) {
+            const p = pairFromArray(obj.geometry.coordinates);
+            if (p) return p;
+          }
+          if (obj.geojson && Array.isArray(obj.geojson.coordinates)) {
+            const p = pairFromArray(obj.geojson.coordinates);
+            if (p) return p;
+          }
+          // direct coordinate object
+          const fromObj = pairFromObject(obj);
+          if (fromObj) return fromObj;
+
+          // check common container keys
+          for (const k of ['location','coordinates','position','point','coords','geometry']) {
+            if (k in obj) {
+              const r = find(obj[k], depth+1);
+              if (r) return r;
+            }
+          }
+
+          // otherwise scan values
+          for (const v of Object.values(obj)) {
+            const r = find(v, depth+1);
+            if (r) return r;
+          }
+        }
+        return null;
       }
-      // Some APIs return 'coordinates' as object {lat, lng}
-      if (item.coordinates && item.coordinates.lat && item.coordinates.lng) {
-        return [Number(item.coordinates.lat), Number(item.coordinates.lng)];
-      }
-      // fallback: no coordinates found
-      return null;
+
+      const result = find(item);
+      return result || null;
     }
 
     // Utility: determine the "type" key on an item
