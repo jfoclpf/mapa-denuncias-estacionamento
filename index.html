@@ -222,16 +222,62 @@
 
     // Fetch the list of penalty types and build filter controls
     async function fetchPenaltiesList() {
+      // Try the canonical endpoint first, but attempt fallbacks if the response is empty/unexpected.
       try {
         const res = await fetch(PENALTIES_LIST_URL);
-        if (!res.ok) throw new Error('Erro ao obter /penalties_list: ' + res.status);
-        const data = await res.json();
-        // data might be an array of strings or objects {id, name}
-        buildFilterControls(data);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) { buildFilterControls(data); return; }
+          if (data && Array.isArray(data.data) && data.data.length > 0) { buildFilterControls(data.data); return; }
+          if (data && typeof data === 'object') {
+            const vals = Object.values(data);
+            if (vals.length > 0) { buildFilterControls(vals); return; }
+          }
+          console.warn('penalties_list returned no usable items');
+        } else {
+          console.warn('penalties_list returned', res.status);
+        }
       } catch (err) {
-        console.error(err);
-        filtersEl.innerHTML = '<div class="muted">Não foi possível carregar tipos. Verifique a URL: ' + PENALTIES_LIST_URL + '</div>';
+        console.warn('Erro ao obter /penalties_list:', err);
       }
+
+      // Try some common alternative locations (.json or trailing slash)
+      const altUrls = [PENALTIES_LIST_URL + '.json', PENALTIES_LIST_URL + '/'];
+      for (const u of altUrls) {
+        try {
+          const r = await fetch(u);
+          if (!r.ok) continue;
+          const d = await r.json();
+          if (Array.isArray(d) && d.length > 0) { buildFilterControls(d); return; }
+          if (d && Array.isArray(d.data) && d.data.length > 0) { buildFilterControls(d.data); return; }
+          if (d && typeof d === 'object') {
+            const vals = Object.values(d);
+            if (vals.length > 0) { buildFilterControls(vals); return; }
+          }
+        } catch (e) {
+          console.warn('fallback fetch failed for', u, e);
+        }
+      }
+
+      // Last resort: fetch a small sample from DATA_URL and derive types from the items
+      try {
+        const sampleUrl = new URL(DATA_URL);
+        sampleUrl.searchParams.set('limit', 20);
+        const sr = await fetch(sampleUrl.toString());
+        if (sr.ok) {
+          const sd = await sr.json();
+          let items = Array.isArray(sd) ? sd : (sd && Array.isArray(sd.data) ? sd.data : (sd && typeof sd === 'object' ? Object.values(sd) : []));
+          const types = Array.from(new Set(items.map(it => getTypeKey(it)).filter(Boolean)));
+          if (types.length > 0) { buildFilterControls(types); return; }
+        } else {
+          console.warn('sample DATA_URL returned', sr.status);
+        }
+      } catch (e) {
+        console.warn('sample fetch failed', e);
+      }
+
+      // If everything failed, show a helpful message
+      filtersEl.innerHTML = '<div class="muted">Não foi possível carregar tipos. Verifique a URL: ' + PENALTIES_LIST_URL + '</div>';
     }
 
     // Create filter checkboxes from retrieved list
