@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>[v10] Mapa — Denúncias de Estacionamento</title>
+  <title>[v11] Mapa — Denúncias de Estacionamento</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -370,10 +370,21 @@
         return;
       }
       list.forEach(entry => {
-        let id, name;
-        if (typeof entry === 'string') { id = entry; name = entry; }
-        else if (entry && (entry.id || entry.key)) { id = entry.id || entry.key; name = entry.name || entry.title || id; }
-        else { id = JSON.stringify(entry); name = String(entry); }
+        let id = null, name = null;
+        if (typeof entry === 'string') {
+          id = entry; name = entry;
+        } else if (entry && typeof entry === 'object') {
+          // prefer explicit id/code fields
+          id = entry.id || entry.key || (entry.attributes && (entry.attributes.code || entry.attributes.id)) || null;
+          // prefer a human-friendly description when available
+          name = entry.name || entry.title || (entry.attributes && (entry.attributes.description || entry.attributes.name)) || null;
+          // fallback to stringified id/object
+          if (!id) id = JSON.stringify(entry);
+          if (!name) name = String(id);
+        } else {
+          id = JSON.stringify(entry);
+          name = String(entry);
+        }
 
         const key = String(id);
 
