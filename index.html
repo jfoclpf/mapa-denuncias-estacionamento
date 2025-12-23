@@ -72,13 +72,6 @@
         </div>
 
         <div style="margin-top:10px;">
-          <label for="limit">Número de pontos a carregar:</label>
-          <select id="limit" aria-label="limit">
-            <option value="200" selected>200</option>
-            <option value="500">500</option>
-            <option value="1000">1000</option>
-            <option value="5000">5000</option>
-          </select>
           <button id="reload" class="btn small">Carregar</button>
         </div>
       </div>
@@ -161,7 +154,6 @@
     const filtersEl = document.getElementById('filters');
     const visibleCountEl = document.getElementById('visibleCount');
     const loadedCountEl = document.getElementById('loadedCount');
-    const limitEl = document.getElementById('limit');
 
     // Utility: robustly get lat/lng from a payload item (recursive search)
     function getLatLng(item) {
