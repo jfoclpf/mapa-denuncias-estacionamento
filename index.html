@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>v8 Mapa — Denúncias de Estacionamento</title>
+  <title>[v9] Mapa — Denúncias de Estacionamento</title>
 
   <!-- Leaflet CSS -->
   <link
@@ -576,9 +576,11 @@
       // Helper: recursively search item for string values that match any selected filter
       function itemMatchesFilter(obj, filterSet, depth = 0) {
         if (!obj || depth > 8) return false;
+        // prepare filter strings
+        const filters = Array.from(filterSet).map(f => String(f).toLowerCase());
         if (typeof obj === 'string' || typeof obj === 'number') {
           const s = String(obj).toLowerCase();
-          for (const f of filterSet) if (String(f).toLowerCase() === s) return true;
+          for (const f of filters) if (s.includes(f) || f.includes(s)) return true;
           return false;
         }
         if (Array.isArray(obj)) {
@@ -586,6 +588,11 @@
           return false;
         }
         if (typeof obj === 'object') {
+          // check keys too (some APIs put type labels in keys)
+          for (const k of Object.keys(obj)) {
+            const kl = String(k).toLowerCase();
+            for (const f of filters) if (kl.includes(f) || f.includes(kl)) return true;
+          }
           for (const v of Object.values(obj)) if (itemMatchesFilter(v, filterSet, depth+1)) return true;
           return false;
         }
