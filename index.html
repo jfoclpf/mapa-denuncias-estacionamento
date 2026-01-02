@@ -513,15 +513,10 @@
         const wrapper = document.createElement('label');
         wrapper.className = 'filter-item';
         wrapper.innerHTML = `
-          <input type="checkbox" data-type="${escapeHtml(key)}" />
+          <input type="checkbox" data-type="${escapeHtml(key)}" checked />
           <span>${escapeHtml(name)}</span>
         `;
         filtersEl.appendChild(wrapper);
-        // apply default selection: select only DEFAULT_TYPE if it exists
-        try {
-          const cb = wrapper.querySelector('input[type=checkbox]');
-          if (cb) cb.checked = (key === DEFAULT_TYPE);
-        } catch (e) { }
       });
 
       // initialize currentTypeFilter based on checked boxes (defaults applied above)
