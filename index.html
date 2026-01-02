@@ -220,7 +220,13 @@
     let resizeTimer;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(setupMobileUI, 250);
+      resizeTimer = setTimeout(() => {
+        setupMobileUI();
+        // Notify Leaflet that the map container size may have changed
+        if (typeof map !== 'undefined' && map.invalidateSize) {
+          setTimeout(() => map.invalidateSize(), 100);
+        }
+      }, 250);
     });
 
     // Configuration: change these if the API endpoints differ
