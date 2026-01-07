@@ -132,11 +132,6 @@
       <div id="controls">
         <div>
           <button id="fit" class="btn small">Ajustar à visualização</button>
-          <button id="clear" class="btn small">Limpar marcadores</button>
-        </div>
-
-        <div style="margin-top:10px;">
-          <button id="reload" class="btn small">Carregar</button>
         </div>
       </div>
 
@@ -529,7 +524,7 @@
     function onFilterChange() {
       const checked = Array.from(filtersEl.querySelectorAll('input[type=checkbox]:checked')).map(cb => cb.dataset.type);
       currentTypeFilter = new Set(checked);
-      applyFilters();
+      loadData();
     }
 
     // Toggle all
@@ -762,14 +757,6 @@
     document.getElementById('fit').addEventListener('click', () => {
       if (markers.getLayers().length === 0) return alert('Nenhum marcador visível.');
       map.fitBounds(markers.getBounds(), { maxZoom: 16 });
-    });
-
-    document.getElementById('clear').addEventListener('click', () => {
-      clearData();
-    });
-
-    document.getElementById('reload').addEventListener('click', () => {
-      loadData();
     });
 
     // init
