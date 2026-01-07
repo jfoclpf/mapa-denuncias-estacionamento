@@ -245,6 +245,7 @@
     // Storage of all loaded items and marker references
     let allItems = []; // { item: <object>, marker: <L.marker>, typeKey: string }
     let currentTypeFilter = new Set(); // selected types (if empty -> treat as all selected)
+    let penaltiesListData = []; // Store penalties_list data for popup reference
 
     // UI elements
     const filtersEl = document.getElementById('filters');
@@ -387,29 +388,135 @@
 
     // Utility: determine the "type" key on an item
     function getTypeKey(item) {
-      // Try fields commonly used: penalty, type, kind, category
+      // Check attributes object first (common in JSON:API format)
+      const attrs = item.attributes || {};
+      
+      // Priority order: penalty code/id fields first
+      if (attrs.penalty) return String(attrs.penalty);
+      if (attrs.code) return String(attrs.code);
       if (item.penalty) return String(item.penalty);
-      if (item.type) return String(item.type);
-      if (item.kind) return String(item.kind);
-      if (item.category) return String(item.category);
-      // Some APIs use 'penalty_id' or 'penalty_type'
+      if (attrs.penalty_type) return String(attrs.penalty_type);
+      if (attrs.penalty_id) return String(attrs.penalty_id);
       if (item.penalty_type) return String(item.penalty_type);
       if (item.penalty_id) return String(item.penalty_id);
+      
+      // Then try type/kind/category fields
+      if (attrs.type) return String(attrs.type);
+      if (attrs.kind) return String(attrs.kind);
+      if (attrs.category) return String(attrs.category);
+      if (item.kind) return String(item.kind);
+      if (item.category) return String(item.category);
+      
+      // Use item.type only if not generic "penalty_record"
+      if (item.type && item.type !== 'penalty_record') return String(item.type);
+      
+      // Last resort: use item id from attributes
+      if (item.id) return String(item.id);
+      
       // If none found, return 'unknown'
       return 'unknown';
     }
 
-    // Build popup content (simple)
+    // Build popup content (human-readable)
     function buildPopupHtml(item) {
       const lines = [];
-      if (item.title) lines.push('<strong>' + escapeHtml(item.title) + '</strong>');
-      // list some common fields
-      ['description','detail','comment','created_at','date','city','address','street'].forEach(k => {
-        if (item[k]) lines.push('<div><strong>' + escapeHtml(k) + ':</strong> ' + escapeHtml(String(item[k])) + '</div>');
-      });
-      // fallback: show JSON snippet
-      lines.push('<hr><div><small>Dados completos:</small><pre>' + escapeHtml(JSON.stringify(item, null, 2)) + '</pre></div>');
+      
+      // Get coordinates for this item
+      const latlng = getLatLng(item);
+      const lat = latlng ? latlng[0] : null;
+      const lng = latlng ? latlng[1] : null;
+      
+      // Helper to get value from item or item.attributes
+      const getValue = (key) => item[key] || (item.attributes && item.attributes[key]) || null;
+      
+      // Get penalty type - prioritize _fetchedType if available
+      let typeKey = item._fetchedType ? String(item._fetchedType) : getTypeKey(item);
+      if ((!typeKey || typeKey === 'unknown') && item._fetchedType) {
+        typeKey = String(item._fetchedType);
+      }
+      
+      // Find corresponding info from penalties_list
+      let penaltyInfo = null;
+      if (penaltiesListData && penaltiesListData.length > 0) {
+        penaltyInfo = penaltiesListData.find(p => {
+          if (typeof p === 'string') return p === typeKey;
+          const pId = String(p.id || p.key || (p.attributes && (p.attributes.code || p.attributes.id)) || '');
+          const pCode = p.attributes && p.attributes.code ? String(p.attributes.code) : null;
+          return pId === typeKey || pCode === typeKey;
+        });
+      }
+      
+      // Title/Type
+      const typeName = penaltyInfo ? 
+        (penaltyInfo.name || penaltyInfo.title || (penaltyInfo.attributes && (penaltyInfo.attributes.description || penaltyInfo.attributes.name)) || typeKey) : 
+        typeKey;
+      lines.push('<div style="font-size:15px;font-weight:bold;margin-bottom:8px;color:#333;">' + escapeHtml(typeName) + '</div>');
+      
+      // Date
+      const dateStr = getValue('created_at') || getValue('date') || getValue('timestamp') || getValue('data');
+      if (dateStr) {
+        const formattedDate = formatDate(dateStr);
+        lines.push('<div style="margin-bottom:6px;"><strong>📅 Data:</strong> ' + escapeHtml(formattedDate) + '</div>');
+      }
+      
+      // Autoridade
+      const autoridade = getValue('autoridade') || getValue('authority') || getValue('auto');
+      if (autoridade) {
+        lines.push('<div style="margin-bottom:6px;"><strong>👮 Autoridade:</strong> ' + escapeHtml(String(autoridade)) + '</div>');
+      }
+      
+      // Coordinates with Google Street View link
+      if (lat && lng) {
+        const coordText = lat.toFixed(6) + ', ' + lng.toFixed(6);
+        const streetViewUrl = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + lat + ',' + lng;
+        lines.push('<div style="margin-bottom:6px;"><strong>📍 Coordenadas:</strong> ' + escapeHtml(coordText) + '</div>');
+        lines.push('<div style="margin-bottom:8px;"><a href="' + escapeHtml(streetViewUrl) + '" target="_blank" style="color:#1a73e8;text-decoration:none;">🔍 Ver no Google Street View</a></div>');
+      }
+      
+      // Description/Details
+      const description = getValue('description') || getValue('detail') || getValue('details') || getValue('comment') || getValue('observacoes') || getValue('observacao');
+      if (description) {
+        lines.push('<div style="margin-bottom:6px;"><strong>Descrição:</strong></div>');
+        lines.push('<div style="margin-bottom:8px;color:#555;">' + escapeHtml(String(description)) + '</div>');
+      }
+      
+      // Legal basis from penalties_list
+      if (penaltyInfo) {
+        const baseLegal = penaltyInfo.base_legal || (penaltyInfo.attributes && penaltyInfo.attributes.base_legal) || null;
+        if (baseLegal) {
+          lines.push('<div style="margin-bottom:6px;"><strong>⚖️ Base Legal:</strong></div>');
+          lines.push('<div style="margin-bottom:8px;font-size:12px;color:#666;line-height:1.4;">' + escapeHtml(String(baseLegal)) + '</div>');
+        }
+      }
+      
+      // Additional location info
+      const city = getValue('city') || getValue('cidade') || getValue('municipality') || getValue('municipio');
+      const address = getValue('address') || getValue('morada') || getValue('street') || getValue('rua');
+      if (city || address) {
+        lines.push('<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee;font-size:12px;color:#666;">');
+        if (city) lines.push('<div>🏙️ ' + escapeHtml(String(city)) + '</div>');
+        if (address) lines.push('<div>🏠 ' + escapeHtml(String(address)) + '</div>');
+        lines.push('</div>');
+      }
+      
       return lines.join('\n');
+    }
+    
+    // Format date to human-readable format
+    function formatDate(dateStr) {
+      try {
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return String(dateStr);
+        return date.toLocaleDateString('pt-PT', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (e) {
+        return String(dateStr);
+      }
     }
 
     function escapeHtml(s) {
@@ -479,6 +586,9 @@
 
     // Create filter checkboxes from retrieved list
     function buildFilterControls(list) {
+      // Store the list for later use in popups
+      penaltiesListData = list || [];
+      
       filtersEl.innerHTML = '';
       if (!Array.isArray(list) || list.length === 0) {
         filtersEl.innerHTML = '<div class="muted">Lista vazia</div>';
